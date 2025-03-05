@@ -23,17 +23,17 @@ struct Settings {
 async fn main() {
     let mut settings = Settings::register();
 
-	let mut old_level = String::new();
+    let mut old_level = String::new();
     asr::print_message("Autosplitter for Sniper Elite V2 started!");
 
     loop {
         let process = Process::wait_attach("SniperEliteV2.exe").await;
 
         process.until_closes(async {
-			let baseaddress = match process.get_module_address("SniperEliteV2.exe") {
+            let baseaddress = match process.get_module_address("SniperEliteV2.exe") {
                 Ok(addr) => addr,
                 Err(_) => return
-			};
+            };
 
             loop {
                 settings.update();
@@ -47,10 +47,10 @@ async fn main() {
 
                 // Read the current level
                 if let Ok(level_bytes) = process.read_vec(baseaddress + 0x685F31, 38) {
-					let level = String::from_utf8_lossy(&level_bytes).split('\0').next().unwrap_or("").to_string();
+                    let level = String::from_utf8_lossy(&level_bytes).split('\0').next().unwrap_or("").to_string();
                     if level != old_level {
                         old_level = level.clone();
-						asr::print_message(&level);
+                        asr::print_message(&level);
                         if (level != "nu\\Options.gui" || old_level != "nu\\Options.gui") && level != "Tutorial\\M01_Tutorial.pc" {
                             asr::timer::split();
                         }
