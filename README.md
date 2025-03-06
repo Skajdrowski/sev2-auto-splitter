@@ -1,4 +1,4 @@
-# sev2-auto-splitter
+# SEV2 ASR Autosplitter
 
 An autosplitter for SniperElite V2 using Autosplitting runtime 
 
