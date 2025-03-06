@@ -1,6 +1,6 @@
 # sev2-auto-splitter
 
-An auto splitter for SniperElite V2 using Autosplitting runtime 
+An autosplitter for SniperElite V2 using Autosplitting runtime 
 
 ## Compilation
 
