@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use asr::{future::sleep, future::retry, settings::Gui, Process};
+use asr::{future::sleep, settings::Gui, Process};
 use core::{str, time::Duration};
 use dlmalloc::GlobalDlmalloc;
 
@@ -57,6 +57,17 @@ impl Addr {
     }
 }
 
+async fn Attacher() -> Process {
+    loop {
+        if let Some(process) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map(Process::attach)
+        {
+            return process;
+        }
+        asr::print_message("Waiting for game to attach...");
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
 async fn main() {
     let mut settings = Settings::register();
     let mut oldLevel = [0u8; 38];
@@ -65,101 +76,103 @@ async fn main() {
     let mut baseAddress = asr::Address::new(0);
     let mut addrStruct = Addr::original();
 
-    //asr::print_message("Autosplitter for Sniper Elite V2 started!");
+    loop {
+        let process = Attacher().await;
 
-    let process = retry(|| {
-        ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map(Process::attach)
-    }).await;
-
-    process.until_closes(async {
-        if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (
-        |exe| Some((process.get_module_address(exe).ok()?, process.get_module_size(exe).ok()?))
-        )
-        {
-            baseAddress = base;
-            if moduleSize == 18169856 {
-                addrStruct = Addr::remastered();
-            }
-        }
-
-        let start = || {
-            if let Ok(startByte) = process.read::<u8>(baseAddress + addrStruct.startAddress) {
-                if startByte == 1 {
-                    asr::timer::start();
-                }
-            }
-        };
-        
-        let isLoading = || {
-            if let (Ok(loadByte), Ok(splashByte)) = (
-            process.read::<u8>(baseAddress + addrStruct.loadAddress),
-            process.read::<u8>(baseAddress + addrStruct.splashAddress)
+        process.until_closes(async {
+            if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (
+                |exe| Some((process.get_module_address(exe).ok()?, process.get_module_size(exe).ok()?))
             ) {
-                if loadByte == 0 || splashByte == 0 {
-                    asr::timer::pause_game_time();
-                }
-                else {
-                    asr::timer::resume_game_time();
+                baseAddress = base;
+                if moduleSize == 18169856 {
+                    addrStruct = Addr::remastered();
                 }
             }
-        };
 
-        let mut levelSplit = || {
-            if let Ok(levelByte) = process.read_vec(baseAddress + addrStruct.levelAddress, 38) {
-                if levelByte != oldLevel {
-                    oldLevel.copy_from_slice(&levelByte);
-                    let level = str::from_utf8(&levelByte).unwrap_or("").split('\0').next().unwrap_or("");
-
-                    if (level != "nu\\Options.gui"
-                    || str::from_utf8(&oldLevel).unwrap_or("").split('\0').next().unwrap_or("") != "nu\\Options.gui")
-                    && level != "Tutorial\\M01_Tutorial.pc" {
-                        asr::timer::split();
+            loop {
+                settings.update();
+                let start = || {
+                    if let Ok(startByte) = process.read::<u8>(baseAddress + addrStruct.startAddress) {
+                        if startByte == 1 {
+                            asr::timer::start();
+                        }
                     }
+                };
+            
+                let isLoading = || {
+                    if let (Ok(loadByte), Ok(splashByte)) = (
+                        process.read::<u8>(baseAddress + addrStruct.loadAddress),
+                        process.read::<u8>(baseAddress + addrStruct.splashAddress)
+                    ) {
+                        if loadByte == 0 || splashByte == 0 {
+                            asr::timer::pause_game_time();
+                        }
+                        else {
+                            asr::timer::resume_game_time();
+                        }
+                    }
+                };
+                let level_bytes = process.read_vec(baseAddress + addrStruct.levelAddress, 38).ok();
+                
+                let mut levelSplit = || {
+                    if let Some(ref levelByte) = level_bytes {
+                        if levelByte != &oldLevel {
+                            oldLevel.copy_from_slice(levelByte);
+                            let level = str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("");
+                            asr::print_message(level);
+                            if level != "" && level != "nu\\Options.gui" && level != "nu\\GUIMenuCommon.asr" && level != "Tutorial\\M01_Tutorial.pc" {
+                                asr::timer::split();
+                            }
+                        }
+                    }
+                };
+                
+                let lastSplit = || {
+                    if let (Some(levelByte), Ok(bulletCamByte), Ok(objectiveByte)) = (
+                        level_bytes.as_deref(),
+                        process.read::<u8>(baseAddress + addrStruct.bulletCamAddress),
+                        process.read::<u8>(baseAddress + addrStruct.objectiveAddress)
+                    ) {
+                        if str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("") == "BrandenburgGate\\M11_BrandenburgGate.pc" && bulletCamByte == 1 && objectiveByte == 3 {
+                            asr::timer::split();
+                        }
+                    }
+                };
+                
+                let mut individualLvl = || {
+                    if let (Ok(ilSplashByte), Ok(mcByte)) = (
+                        process.read::<u8>(baseAddress + addrStruct.splashAddress),
+                        process.read::<u8>(baseAddress + addrStruct.mcAddress),
+                    ) {
+                        if mcByte == 1 {
+                            asr::timer::split();
+                        }
+                        if ilSplashByte != oldSplash {
+                            oldSplash = ilSplashByte;
+                        }
+                        if let Some(levelByte) = level_bytes.as_deref() {
+                            if (ilSplashByte == 1 && oldSplash == 0) && str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("") != "nu\\Options.gui" {
+                                asr::timer::start();
+                            }
+                        }
+                    }
+                };
+                
+                if settings.Full_game_run {
+                    //let start_time = asr::time_util::Instant::now();
+                    start();
+                    //let end_time = start_time.elapsed();
+                    levelSplit();
+                    lastSplit();
+                    //asr::print_message(&alloc::format!("Tick time: {:?}", end_time));
                 }
-            }
-        };
-
-        let lastSplit = || {
-            if let (Ok(lastLevelByte), Ok(bulletCamByte), Ok(objectiveByte)) = (
-            process.read_vec(baseAddress + addrStruct.levelAddress, 38),
-            process.read::<u8>(baseAddress + addrStruct.bulletCamAddress),
-            process.read::<u8>(baseAddress + addrStruct.objectiveAddress)) {
-                if str::from_utf8(&lastLevelByte).unwrap_or("").split('\0').next().unwrap_or("") == "BrandenburgGate\\M11_BrandenburgGate.pc"
-                && bulletCamByte == 1
-                && objectiveByte == 3 {
-                    asr::timer::split();
+                if settings.Individual_level {
+                    individualLvl();
                 }
+                isLoading();
+                
+                sleep(Duration::from_nanos(16666667)).await;
             }
-        };
-
-        let mut individualLvl = || {
-            if let (Ok(ilSplashByte), Ok(mcByte), Ok(ilLevelByte)) = (process.read::<u8>(baseAddress + addrStruct.splashAddress), process.read::<u8>(baseAddress + addrStruct.mcAddress), process.read_vec(baseAddress + addrStruct.levelAddress, 38)) {
-                if mcByte == 1 {
-                    asr::timer::split();
-                }
-
-                if ilSplashByte != oldSplash {
-                    oldSplash = ilSplashByte;
-                }
-                if (ilSplashByte == 1 && oldSplash == 0) && str::from_utf8(&ilLevelByte).unwrap_or("").split('\0').next().unwrap_or("") != "nu\\Options.gui" {
-                    asr::timer::start();
-                }
-            }
-        };
-
-        loop {
-            settings.update();
-            if settings.Full_game_run {
-                start();
-                levelSplit();
-                lastSplit();
-            }
-            if settings.Individual_level {
-                individualLvl();
-            }
-            isLoading();
-
-            sleep(Duration::from_nanos(16666666)).await;
-        }
-    }).await;
+        }).await;
+    }
 }
