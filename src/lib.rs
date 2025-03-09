@@ -1,7 +1,7 @@
 #![no_std]
 #![allow(non_snake_case)]
-
-extern crate alloc;
+#![allow(non_upper_case_globals)]
+#![allow(static_mut_refs)]
 
 use asr::{future::sleep, settings::Gui, Process};
 use core::{str, time::Duration};
@@ -63,100 +63,99 @@ async fn Attacher() -> Process {
         {
             return process;
         }
-        asr::print_message("Waiting for game to attach...");
-        sleep(Duration::from_secs(1)).await;
+        else {
+            asr::print_message("Waiting for game to attach...");
+            sleep(Duration::from_secs(1)).await;
+        }
     }
 }
 
 async fn main() {
     let mut settings = Settings::register();
-    let mut oldLevel = [0u8; 38];
+    
+    static mut splashByte: u8 = 0;
     let mut oldSplash = 0;
+    
+    static mut levelStr: &str = "";
+    static mut levelArray: [u8; 38] = [0; 38];
+    let mut oldLevel = [0u8; 38];
+    
     
     let mut baseAddress = asr::Address::new(0);
     let mut addrStruct = Addr::original();
+    
+    let process = Attacher().await;
 
-    loop {
-        let process = Attacher().await;
-
-        process.until_closes(async {
-            if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (
-                |exe| Some((process.get_module_address(exe).ok()?, process.get_module_size(exe).ok()?))
-            ) {
-                baseAddress = base;
-                if moduleSize == 18169856 {
-                    addrStruct = Addr::remastered();
-                }
+    process.until_closes(async {
+        if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (|exe|
+        Some((process.get_module_address(exe).ok()?,
+        process.get_module_size(exe).ok()?)))
+        {
+            baseAddress = base;
+            if moduleSize == 18169856 {
+                addrStruct = Addr::remastered();
             }
-
+        }
+        unsafe {
+            let start = || {
+                let startByte = process.read::<u8>(baseAddress + addrStruct.startAddress).unwrap_or(0);
+                if startByte == 1 {
+                    asr::timer::start();
+                }
+            };
+            
+            let isLoading = || {
+                let loadByte = process.read::<u8>(baseAddress + addrStruct.loadAddress).unwrap_or(1); 
+                splashByte = process.read::<u8>(baseAddress + addrStruct.splashAddress).unwrap_or(1);
+                if loadByte == 0 || splashByte == 0 {
+                    asr::timer::pause_game_time();
+                }
+                else {
+                    asr::timer::resume_game_time();
+                }
+            };
+                
+            let mut levelSplit = || {
+                if levelArray != oldLevel {
+                    oldLevel = levelArray;
+                    asr::print_message(levelStr);
+                    if levelStr != "" && levelStr != "nu\\Options.gui" && levelStr != "nu\\GUIMenuCommon.asr" && levelStr != "Tutorial\\M01_Tutorial.pc" {
+                        asr::timer::split();
+                    }
+                }
+            };
+                
+            let lastSplit = || {
+                let bulletCamByte = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
+                let objectiveByte = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
+            
+                if levelStr == "BrandenburgGate\\M11_BrandenburgGate.pc" && bulletCamByte == 1 && objectiveByte == 3 {
+                    asr::timer::split();
+                }
+            };
+                
+            let mut individualLvl = || {
+                let mcByte = process.read::<u8>(baseAddress + addrStruct.mcAddress).unwrap_or(0);
+            
+                if mcByte == 1 {
+                    asr::timer::split();
+                }
+                if splashByte != oldSplash {
+                    oldSplash = splashByte;
+                }
+                if (splashByte == 1 && oldSplash == 0) && levelStr != "nu\\Options.gui" {
+                    asr::timer::start();
+                }
+            };
+        
             loop {
                 settings.update();
-                let start = || {
-                    if let Ok(startByte) = process.read::<u8>(baseAddress + addrStruct.startAddress) {
-                        if startByte == 1 {
-                            asr::timer::start();
-                        }
-                    }
-                };
             
-                let isLoading = || {
-                    if let (Ok(loadByte), Ok(splashByte)) = (
-                        process.read::<u8>(baseAddress + addrStruct.loadAddress),
-                        process.read::<u8>(baseAddress + addrStruct.splashAddress)
-                    ) {
-                        if loadByte == 0 || splashByte == 0 {
-                            asr::timer::pause_game_time();
-                        }
-                        else {
-                            asr::timer::resume_game_time();
-                        }
-                    }
+                match process.read_into_slice(baseAddress + addrStruct.levelAddress, &mut levelArray) {
+                    Ok(_) => levelArray[0],
+                    Err(_) => return
                 };
-                let level_bytes = process.read_vec(baseAddress + addrStruct.levelAddress, 38).ok();
-                
-                let mut levelSplit = || {
-                    if let Some(ref levelByte) = level_bytes {
-                        if levelByte != &oldLevel {
-                            oldLevel.copy_from_slice(levelByte);
-                            let level = str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("");
-                            asr::print_message(level);
-                            if level != "" && level != "nu\\Options.gui" && level != "nu\\GUIMenuCommon.asr" && level != "Tutorial\\M01_Tutorial.pc" {
-                                asr::timer::split();
-                            }
-                        }
-                    }
-                };
-                
-                let lastSplit = || {
-                    if let (Some(levelByte), Ok(bulletCamByte), Ok(objectiveByte)) = (
-                        level_bytes.as_deref(),
-                        process.read::<u8>(baseAddress + addrStruct.bulletCamAddress),
-                        process.read::<u8>(baseAddress + addrStruct.objectiveAddress)
-                    ) {
-                        if str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("") == "BrandenburgGate\\M11_BrandenburgGate.pc" && bulletCamByte == 1 && objectiveByte == 3 {
-                            asr::timer::split();
-                        }
-                    }
-                };
-                
-                let mut individualLvl = || {
-                    if let (Ok(ilSplashByte), Ok(mcByte)) = (
-                        process.read::<u8>(baseAddress + addrStruct.splashAddress),
-                        process.read::<u8>(baseAddress + addrStruct.mcAddress),
-                    ) {
-                        if mcByte == 1 {
-                            asr::timer::split();
-                        }
-                        if ilSplashByte != oldSplash {
-                            oldSplash = ilSplashByte;
-                        }
-                        if let Some(levelByte) = level_bytes.as_deref() {
-                            if (ilSplashByte == 1 && oldSplash == 0) && str::from_utf8(levelByte).unwrap_or("").split('\0').next().unwrap_or("") != "nu\\Options.gui" {
-                                asr::timer::start();
-                            }
-                        }
-                    }
-                };
+                levelStr = str::from_utf8(&levelArray).unwrap_or("").split('\0').next().unwrap_or("");
                 
                 if settings.Full_game_run {
                     //let start_time = asr::time_util::Instant::now();
@@ -173,6 +172,6 @@ async fn main() {
                 
                 sleep(Duration::from_nanos(16666667)).await;
             }
-        }).await;
-    }
+        }
+    }).await;
 }
