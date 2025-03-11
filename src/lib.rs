@@ -118,7 +118,6 @@ async fn main() {
             let mut levelSplit = || {
                 if levelArray != oldLevel {
                     oldLevel = levelArray;
-                    asr::print_message(levelStr);
                     if levelStr != "" && levelStr != "nu\\Options.gui" && levelStr != "nu\\GUIMenuCommon.asr" && levelStr != "Tutorial\\M01_Tutorial.pc" {
                         asr::timer::split();
                     }
