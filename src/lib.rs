@@ -78,7 +78,7 @@ async fn main() {
     
     static mut levelStr: &str = "";
     static mut levelArray: [u8; 38] = [0; 38];
-    let mut oldLevel = [0u8; 38];
+    static mut oldLevel: [u8; 38] = [0; 38];
     
     
     let mut baseAddress = asr::Address::new(0);
@@ -117,7 +117,6 @@ async fn main() {
                 
             let mut levelSplit = || {
                 if levelArray != oldLevel {
-                    oldLevel = levelArray;
                     if levelStr != "" && levelStr != "nu\\Options.gui" && levelStr != "nu\\GUIMenuCommon.asr" && levelStr != "Tutorial\\M01_Tutorial.pc" {
                         asr::timer::split();
                     }
@@ -169,6 +168,7 @@ async fn main() {
                 }
                 isLoading();
                 
+                oldLevel = levelArray;
                 sleep(Duration::from_nanos(16666667)).await;
             }
         }
