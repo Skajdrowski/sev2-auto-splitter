@@ -64,8 +64,8 @@ async fn main() {
     let mut oldSplash: u8 = 0;
     
     static mut levelStr: &str = "";
-    static mut levelArray: [u8; 38] = [0; 38];
-    static mut oldLevel: [u8; 38] = [0; 38];
+    static mut levelArray: [u8; 2] = [0; 2];
+    static mut oldLevel: [u8; 2] = [0; 2];
     
     
     let mut baseAddress = asr::Address::new(0);
@@ -103,7 +103,7 @@ async fn main() {
                     
                 let levelSplit = || {
                     if levelArray != oldLevel {
-                        if levelStr != "" && levelStr != "nu\\Options.gui" && levelStr != "nu\\GUIMenuCommon.asr" && levelStr != "Tutorial\\M01_Tutorial.pc" {
+                        if levelStr != "" && levelStr != "nu" && levelStr != "Tu" {
                             asr::timer::split();
                         }
                     }
@@ -113,7 +113,7 @@ async fn main() {
                     let bulletCamByte: u8 = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
                     let objectiveByte: u8 = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
                 
-                    if levelStr == "BrandenburgGate\\M11_BrandenburgGate.pc" && bulletCamByte == 1 && objectiveByte == 3 {
+                    if levelStr == "Br" && bulletCamByte == 1 && objectiveByte == 3 {
                         asr::timer::split();
                     }
                 };
@@ -127,7 +127,7 @@ async fn main() {
                     if splashByte != oldSplash {
                         oldSplash = splashByte;
                     }
-                    if (splashByte == 1 && oldSplash == 0) && levelStr != "nu\\Options.gui" {
+                    if (splashByte == 1 && oldSplash == 0) && levelStr != "nu" {
                         asr::timer::start();
                     }
                 };
