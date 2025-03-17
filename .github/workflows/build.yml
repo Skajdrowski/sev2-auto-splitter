@@ -30,7 +30,7 @@ jobs:
 
       - name: Release
         if: github.ref == 'refs/heads/master'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.1
         with:
           files: target/wasm32-wasip1/release/sev2_auto_splitter.wasm
           name: Latest
