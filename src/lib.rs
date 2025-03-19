@@ -5,10 +5,6 @@
 
 use asr::{future::{sleep, retry}, settings::Gui, Process};
 use core::{str, time::Duration};
-use dlmalloc::GlobalDlmalloc;
-
-#[global_allocator]
-static ALLOCATOR: GlobalDlmalloc = GlobalDlmalloc;
 
 asr::async_main!(stable);
 asr::panic_handler!();
