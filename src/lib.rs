@@ -74,7 +74,7 @@ async fn main() {
             process.get_module_size(exe).ok()?)))
             {
                 baseAddress = base;
-                if moduleSize == 18169856 {
+                if moduleSize == 18169856 || moduleSize == 512000 { //512000 = Remastered Wine/Proton
                     addrStruct = Addr::remastered();
                 }
             }
