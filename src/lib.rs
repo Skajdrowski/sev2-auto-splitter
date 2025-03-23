@@ -56,12 +56,21 @@ impl Addr {
 async fn main() {
     let mut settings = Settings::register();
     
+    let mut startByte: u8 = 0;
+    
+    let mut loadByte: u8 = 0;
+    
     static mut splashByte: u8 = 0;
     let mut oldSplash: u8 = 0;
     
     static mut levelStr: &str = "";
     static mut levelArray: [u8; 2] = [0; 2];
     static mut oldLevel: [u8; 2] = [0; 2];
+    
+    let mut bulletCamByte: u8 = 0;
+    let mut objectiveByte: u8 = 0;
+    
+    let mut mcByte: u8 = 0;
     
     
     let mut baseAddress = asr::Address::new(0);
@@ -79,15 +88,15 @@ async fn main() {
                 }
             }
             unsafe {
-                let start = || {
-                    let startByte: u8 = process.read::<u8>(baseAddress + addrStruct.startAddress).unwrap_or(0);
+                let mut start = || {
+                    startByte = process.read::<u8>(baseAddress + addrStruct.startAddress).unwrap_or(0);
                     if startByte == 1 {
                         asr::timer::start();
                     }
                 };
                 
-                let isLoading = || {
-                    let loadByte: u8 = process.read::<u8>(baseAddress + addrStruct.loadAddress).unwrap_or(1); 
+                let mut isLoading = || {
+                    loadByte = process.read::<u8>(baseAddress + addrStruct.loadAddress).unwrap_or(1); 
                     splashByte = process.read::<u8>(baseAddress + addrStruct.splashAddress).unwrap_or(1);
                     if loadByte == 0 || splashByte == 0 {
                         asr::timer::pause_game_time();
@@ -105,9 +114,9 @@ async fn main() {
                     }
                 };
                     
-                let lastSplit = || {
-                    let bulletCamByte: u8 = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
-                    let objectiveByte: u8 = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
+                let mut lastSplit = || {
+                    bulletCamByte = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
+                    objectiveByte = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
                 
                     if levelStr == "Br" && bulletCamByte == 1 && objectiveByte == 3 {
                         asr::timer::split();
@@ -115,7 +124,7 @@ async fn main() {
                 };
                     
                 let mut individualLvl = || {
-                    let mcByte: u8 = process.read::<u8>(baseAddress + addrStruct.mcAddress).unwrap_or(0);
+                    mcByte = process.read::<u8>(baseAddress + addrStruct.mcAddress).unwrap_or(0);
                 
                     if mcByte == 1 {
                         asr::timer::split();
