@@ -3,7 +3,7 @@
 #![allow(non_upper_case_globals)]
 #![allow(static_mut_refs)]
 
-use asr::{future::{sleep, retry}, settings::Gui, Process};
+use asr::{future::{sleep, retry}, settings::{Gui, Map}, Process};
 use core::{str, time::Duration};
 
 asr::async_main!(stable);
@@ -55,6 +55,7 @@ impl Addr {
 
 async fn main() {
     let mut settings = Settings::register();
+    let mut conflict = false;
     
     let mut startByte: u8 = 0;
     
@@ -77,6 +78,7 @@ async fn main() {
     let mut addrStruct = Addr::original();
     loop {
         let process = retry(|| {["SniperEliteV2.exe", "SEV2_Remastered.exe", "MainThread"].into_iter().find_map(Process::attach)}).await; // MainThread = Wine/Proton
+
         process.until_closes(async {
             if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (|exe|
             Some((process.get_module_address(exe).ok()?,
@@ -87,6 +89,7 @@ async fn main() {
                     addrStruct = Addr::remastered();
                 }
             }
+
             unsafe {
                 let mut start = || {
                     startByte = process.read::<u8>(baseAddress + addrStruct.startAddress).unwrap_or(0);
@@ -94,7 +97,7 @@ async fn main() {
                         asr::timer::start();
                     }
                 };
-                
+
                 let mut isLoading = || {
                     loadByte = process.read::<u8>(baseAddress + addrStruct.loadAddress).unwrap_or(1); 
                     splashByte = process.read::<u8>(baseAddress + addrStruct.splashAddress).unwrap_or(1);
@@ -105,7 +108,7 @@ async fn main() {
                         asr::timer::resume_game_time();
                     }
                 };
-                    
+
                 let levelSplit = || {
                     if levelArray != oldLevel {
                         if levelStr != "" && levelStr != "nu" && levelStr != "Tu" {
@@ -113,7 +116,7 @@ async fn main() {
                         }
                     }
                 };
-                    
+
                 let mut lastSplit = || {
                     bulletCamByte = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
                     objectiveByte = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
@@ -122,7 +125,7 @@ async fn main() {
                         asr::timer::split();
                     }
                 };
-                    
+
                 let mut individualLvl = || {
                     mcByte = process.read::<u8>(baseAddress + addrStruct.mcAddress).unwrap_or(0);
                 
@@ -136,16 +139,24 @@ async fn main() {
                         asr::timer::start();
                     }
                 };
-            
+
                 loop {
                     settings.update();
-                
-                    match process.read_into_slice(baseAddress + addrStruct.levelAddress, &mut levelArray) {
-                        Ok(_) => levelArray[0],
-                        Err(_) => return
-                    };
+
+                    if (settings.Full_game_run && settings.Individual_level) && !conflict {
+                        let map = Map::load();
+                        map.insert("Full_game_run", false);
+                        map.store();
+
+                        conflict = true;
+                    }
+                    else if conflict == true {
+                        conflict = false;
+                    }
+
+                    process.read_into_slice(baseAddress + addrStruct.levelAddress, &mut levelArray).unwrap_or_default();
                     levelStr = str::from_utf8(&levelArray).unwrap_or("").split('\0').next().unwrap_or("");
-                    
+
                     if settings.Full_game_run {
                         //let start_time = asr::time_util::Instant::now();
                         start();
@@ -158,7 +169,7 @@ async fn main() {
                         individualLvl();
                     }
                     isLoading();
-                    
+
                     oldLevel = levelArray;
                     sleep(Duration::from_nanos(16666667)).await;
                 }
