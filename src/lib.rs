@@ -76,7 +76,7 @@ async fn main() {
     let mut baseAddress = asr::Address::new(0);
     let mut addrStruct = Addr::original();
     loop {
-        let process = retry(|| {["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map(Process::attach)}).await;
+        let process = retry(|| {["SniperEliteV2.exe", "SEV2_Remastered.exe", "MainThread"].into_iter().find_map(Process::attach)}).await; // MainThread = Wine/Proton
         process.until_closes(async {
             if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (|exe|
             Some((process.get_module_address(exe).ok()?,
