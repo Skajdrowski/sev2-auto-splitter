@@ -111,10 +111,8 @@ async fn main() {
                 };
 
                 let levelSplit = || {
-                    if levelArray != oldLevel {
-                        if levelStr != "" && levelStr != "nu" && levelStr != "Tu" {
-                            asr::timer::split();
-                        }
+                    if levelArray != oldLevel && !levelStr.is_empty() && levelStr != "nu" && levelStr != "Tu" {
+                        asr::timer::split();
                     }
                 };
 
