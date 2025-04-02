@@ -1,13 +1,29 @@
 #![no_std]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-#![allow(static_mut_refs)]
+#![warn(
+    clippy::complexity,
+    clippy::correctness,
+    clippy::perf,
+    clippy::style,
+    clippy::undocumented_unsafe_blocks,
+    rust_2018_idioms
+)]
 
-use asr::{future::{next_tick, retry}, settings::{Gui, Map}, Process};
-use core::{str};
+use asr::{
+    Address, Process,
+    file_format::pe,
+    future::{next_tick, retry},
+    settings::{Gui, Map},
+    string::ArrayCString,
+    timer::{self, TimerState},
+    watcher::Watcher
+};
 
 asr::async_main!(stable);
 asr::panic_handler!();
+
+const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe"];
 
 #[derive(Gui)]
 struct Settings {
@@ -19,167 +35,150 @@ struct Settings {
     Slow_PC_mode: bool
 }
 
-struct Addr {
-    startAddress: u32,
-    loadAddress: u32,
-    splashAddress: u32,
-    levelAddress: u32,
-    bulletCamAddress: u32,
-    objectiveAddress: u32,
-    mcAddress: u32
+#[derive(Default)]
+struct Watchers {
+    startByte: Watcher<u8>,
+    loadByte: Watcher<u8>,
+    splashByte: Watcher<u8>,
+    level: Watcher<ArrayCString<2>>,
+    bulletCam: Watcher<u8>,
+    objective: Watcher<u8>,
+    mc: Watcher<u8>
 }
 
-impl Addr {
-    fn original() -> Self {
-        Self {
-            startAddress: 0x689FE2,
-            loadAddress: 0x67FC38,
-            splashAddress: 0x653B40,
-            levelAddress: 0x685F31,
-            bulletCamAddress: 0x65B917,
-            objectiveAddress: 0x656F3C,
-            mcAddress: 0x689FD2
+struct Memory {
+    start: Address,
+    load: Address,
+    splash: Address,
+    level: Address,
+    bullet: Address,
+    objective: Address,
+    mc: Address
+}
+
+impl Memory {
+    async fn init(process: &Process, moduleName: &str) -> Self {
+        let baseModule = retry(|| process.get_module_address(moduleName)).await;
+        let baseModuleSize = retry(|| pe::read_size_of_image(process, baseModule)).await;
+        //asr::print_message(&format!("{}", baseModuleSize));
+
+        match baseModuleSize {
+            18169856 => Self {
+                start: baseModule + 0x799A77,
+                load: baseModule + 0x774FE3,
+                splash: baseModule + 0x74C670,
+                level: baseModule + 0x7CFC7D,
+                bullet: baseModule + 0x76DD17,
+                objective: baseModule + 0x7CF568,
+                mc: baseModule + 0x799A63
+            },
+            _ => Self {
+                start: baseModule + 0x689FE2,
+                load: baseModule + 0x67FC38,
+                splash: baseModule + 0x653B40,
+                level: baseModule + 0x685F31,
+                bullet: baseModule + 0x65B917,
+                objective: baseModule + 0x656F3C,
+                mc: baseModule + 0x689FD2
+            }
         }
     }
-    
-    fn remastered() -> Self {
-        Self {
-            startAddress: 0x799A77,
-            loadAddress: 0x774FE3,
-            splashAddress: 0x74C670,
-            levelAddress: 0x7CFC7D,
-            bulletCamAddress: 0x76DD17,
-            objectiveAddress: 0x7CF568,
-            mcAddress: 0x799A63
-        }
+}
+
+fn start(watchers: &Watchers, settings: &Settings) -> bool {
+    match settings.Individual_level {
+        true => watchers.splashByte.pair.is_some_and(|val|
+            val.changed_from_to(&0, &1)
+            && watchers.level.pair.is_some_and(|val| !val.current.matches("nu"))
+        ),
+        false => watchers.startByte.pair.is_some_and(|val| val.changed_to(&1))
     }
+}
+
+fn isLoading(watchers: &Watchers, _settings: &Settings) -> Option<bool> {
+    Some(watchers.loadByte.pair?.current == 0 || watchers.splashByte.pair?.current == 0)
+}
+
+fn split(watchers: &Watchers, settings: &Settings) -> bool {
+    match settings.Individual_level {
+        true => watchers.mc.pair.is_some_and(|val| val.changed_to(&1)),
+        false => watchers.level.pair.is_some_and(|val|
+            val.changed()
+            && !val.current.is_empty()
+            && !val.current.matches("nu")
+            && !val.current.matches("Tu")
+        )
+        || (watchers.level.pair.is_some_and(|val| val.current.matches("Br"))
+        && watchers.bulletCam.pair.is_some_and(|val| val.current == 1)
+        && watchers.objective.pair.is_some_and(|val| val.current == 3))
+    }
+}
+
+fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers) {
+    watchers.startByte.update_infallible(process.read(memory.start).unwrap_or_default());
+
+    watchers.loadByte.update_infallible(process.read(memory.load).unwrap_or(1));
+    watchers.splashByte.update_infallible(process.read(memory.splash).unwrap_or(1));
+
+    watchers.bulletCam.update_infallible(process.read(memory.bullet).unwrap_or_default());
+    watchers.objective.update_infallible(process.read(memory.objective).unwrap_or_default());
+    watchers.mc.update_infallible(process.read(memory.mc).unwrap_or_default());
+
+    watchers.level.update_infallible(process.read(memory.level).unwrap_or_default());
 }
 
 async fn main() {
     let mut settings = Settings::register();
     let mut map = Map::load();
 
-    let mut tickToggled = false;
     asr::set_tick_rate(60.0);
+    let mut tickToggled = false;
 
-    let mut startByte: u8 = 0;
-    
-    let mut loadByte: u8 = 0;
-    
-    static mut splashByte: u8 = 0;
-    let mut oldSplash: u8 = 0;
-    
-    static mut levelStr: &str = "";
-    static mut levelArray: [u8; 2] = [0; 2];
-    static mut oldLevel: [u8; 2] = [0; 2];
-    
-    let mut bulletCamByte: u8 = 0;
-    let mut objectiveByte: u8 = 0;
-    
-    let mut mcByte: u8 = 0;
-    
-    
-    let mut baseAddress = asr::Address::new(0);
-    let mut addrStruct = Addr::original();
     loop {
-        let process = retry(|| {["SniperEliteV2.exe", "SEV2_Remastered.exe", "MainThread"].into_iter().find_map(Process::attach)}).await; // MainThread = Wine/Proton
+        let (processName, process) = retry(|| {
+            pNames.iter().find_map(|&name| Some((name, Process::attach(name)?)))
+        }).await;
 
         process.until_closes(async {
-            if let Some((base, moduleSize)) = ["SniperEliteV2.exe", "SEV2_Remastered.exe"].into_iter().find_map (|exe|
-            Some((process.get_module_address(exe).ok()?,
-            process.get_module_size(exe).ok()?)))
-            {
-                baseAddress = base;
-                if moduleSize == 18169856 || moduleSize == 512000 { //512000 = Remastered Wine/Proton
-                    addrStruct = Addr::remastered();
+            let mut watchers = Watchers::default();
+            let memory = Memory::init(&process, processName).await;
+
+            loop {
+                settings.update();
+
+                if settings.Full_game_run && settings.Individual_level {
+                    map.store();
                 }
-            }
 
-            unsafe {
-                let mut start = || {
-                    startByte = process.read::<u8>(baseAddress + addrStruct.startAddress).unwrap_or(0);
-                    if startByte == 1 {
-                        asr::timer::start();
-                    }
-                };
-
-                let mut isLoading = || {
-                    loadByte = process.read::<u8>(baseAddress + addrStruct.loadAddress).unwrap_or(1); 
-                    splashByte = process.read::<u8>(baseAddress + addrStruct.splashAddress).unwrap_or(1);
-                    if loadByte == 0 || splashByte == 0 {
-                        asr::timer::pause_game_time();
-                    }
-                    else {
-                        asr::timer::resume_game_time();
-                    }
-                };
-
-                let levelSplit = || {
-                    if levelArray != oldLevel && !levelStr.is_empty() && levelStr != "nu" && levelStr != "Tu" {
-                        asr::timer::split();
-                    }
-                };
-
-                let mut lastSplit = || {
-                    bulletCamByte = process.read::<u8>(baseAddress + addrStruct.bulletCamAddress).unwrap_or(0); 
-                    objectiveByte = process.read::<u8>(baseAddress + addrStruct.objectiveAddress).unwrap_or(0);
-                
-                    if levelStr == "Br" && bulletCamByte == 1 && objectiveByte == 3 {
-                        asr::timer::split();
-                    }
-                };
-
-                let mut individualLvl = || {
-                    mcByte = process.read::<u8>(baseAddress + addrStruct.mcAddress).unwrap_or(0);
-                
-                    if mcByte == 1 {
-                        asr::timer::split();
-                    }
-                    if splashByte != oldSplash {
-                        oldSplash = splashByte;
-                    }
-                    if (splashByte == 1 && oldSplash == 0) && levelStr != "nu" {
-                        asr::timer::start();
-                    }
-                };
-
-                loop {
-                    settings.update();
-
-                    if settings.Full_game_run && settings.Individual_level {
-                        map.store();
-                    }
-
-                    if settings.Slow_PC_mode && !tickToggled {
-                        asr::set_tick_rate(30.0);
-                        map = Map::load();
-                        tickToggled = true;
-                    }
-                    else if !settings.Slow_PC_mode && tickToggled {
-                        asr::set_tick_rate(60.0);
-                        map = Map::load();
-                        tickToggled = false;
-                    }
-
-                    process.read_into_slice(baseAddress + addrStruct.levelAddress, &mut levelArray).unwrap_or_default();
-                    levelStr = str::from_utf8(&levelArray).unwrap_or("").split('\0').next().unwrap_or("");
-
-                    if settings.Full_game_run {
-                        //let start_time = asr::time_util::Instant::now();
-                        start();
-                        //let end_time = start_time.elapsed();
-                        levelSplit();
-                        lastSplit();
-                        //asr::print_message(&alloc::format!("Tick time: {:?}", end_time));
-                    }
-                    if settings.Individual_level {
-                        individualLvl();
-                    }
-                    isLoading();
-
-                    oldLevel = levelArray;
-                    next_tick().await;
+                if settings.Slow_PC_mode && !tickToggled {
+                    asr::set_tick_rate(30.0);
+                    map = Map::load();
+                    tickToggled = true;
                 }
+                else if !settings.Slow_PC_mode && tickToggled {
+                    asr::set_tick_rate(60.0);
+                    map = Map::load();
+                    tickToggled = false;
+                }
+
+                if [TimerState::Running, TimerState::Paused].contains(&timer::state()) {
+                    match isLoading(&watchers, &settings) {
+                        Some(true) => timer::pause_game_time(),
+                        Some(false) => timer::resume_game_time(),
+                        _ => ()
+                    }
+
+                    if split(&watchers, &settings) {
+                        timer::split();
+                    }
+                }
+
+                if timer::state().eq(&TimerState::NotRunning) && start(&watchers, &settings) {
+                    timer::start();
+                }
+
+                mainLoop(&process, &memory, &mut watchers);
+                next_tick().await;
             }
         }).await;
     }
