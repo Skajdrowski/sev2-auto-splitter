@@ -23,7 +23,7 @@ use asr::{
 asr::async_main!(stable);
 asr::panic_handler!();
 
-const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe"];
+const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe", "MainThread"]; //MainThread = Wine placeholder
 
 #[derive(Gui)]
 struct Settings {
@@ -57,8 +57,11 @@ struct Memory {
 }
 
 impl Memory {
-    async fn init(process: &Process, moduleName: &str) -> Self {
-        let baseModule = retry(|| process.get_module_address(moduleName)).await;
+    async fn init(process: &Process) -> Self {
+        let baseModule = match process.get_module_address("SniperEliteV2.exe") {
+            Ok(baseModule) => baseModule,
+            Err(_) => process.get_module_address("SEV2_Remastered.exe").unwrap()
+        };
         let baseModuleSize = retry(|| pe::read_size_of_image(process, baseModule)).await;
         //asr::print_message(&format!("{}", baseModuleSize));
 
@@ -135,13 +138,11 @@ async fn main() {
     let mut tickToggled = false;
 
     loop {
-        let (processName, process) = retry(|| {
-            pNames.iter().find_map(|&name| Some((name, Process::attach(name)?)))
-        }).await;
+        let process = retry(|| pNames.iter().find_map(|&name| Process::attach(name))).await;
 
         process.until_closes(async {
             let mut watchers = Watchers::default();
-            let memory = Memory::init(&process, processName).await;
+            let memory = Memory::init(&process).await;
 
             loop {
                 settings.update();
