@@ -63,7 +63,7 @@ impl Memory {
             Err(_) => process.get_module_address("SEV2_Remastered.exe").unwrap()
         };
         let baseModuleSize = retry(|| pe::read_size_of_image(process, baseModule)).await;
-        //asr::print_message(&format!("{}", baseModuleSize));
+        //asr::print_limited::<128>(&format_args!("{}", baseModuleSize));
 
         match baseModuleSize {
             18169856 => Self {
