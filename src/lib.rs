@@ -23,7 +23,7 @@ use asr::{
 asr::async_main!(stable);
 asr::panic_handler!();
 
-const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe", "MainThread"]; //MainThread = Wine placeholder
+const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe", "SniperEliteV2_D3D11_UWP_Retail_Submission.exe" , "MainThread"]; //MainThread = Wine placeholder
 
 #[derive(Gui)]
 struct Settings {
@@ -60,13 +60,16 @@ impl Memory {
     async fn init(process: &Process) -> Self {
         let baseModule = match process.get_module_address("SniperEliteV2.exe") {
             Ok(baseModule) => baseModule,
-            Err(_) => process.get_module_address("SEV2_Remastered.exe").unwrap()
+            Err(_) => match process.get_module_address("SEV2_Remastered.exe") {
+                Ok(baseModule) => baseModule,
+                Err(_) => process.get_module_address("SniperEliteV2_D3D11_UWP_Retail_Submission.exe").unwrap()
+            }
         };
         let baseModuleSize = retry(|| pe::read_size_of_image(process, baseModule)).await;
         //asr::print_limited::<128>(&format_args!("{}", baseModuleSize));
 
         match baseModuleSize {
-            18169856 => Self {
+            18169856 => Self { //Remastered(Win32)
                 start: baseModule + 0x799A77,
                 load: baseModule + 0x774FE3,
                 splash: baseModule + 0x74C670,
@@ -75,7 +78,16 @@ impl Memory {
                 objective: baseModule + 0x7CF568,
                 mc: baseModule + 0x799A63
             },
-            _ => Self {
+            21979136 => Self { //Remastered(UWP)
+                start: baseModule + 0xB55BE7,
+                load: baseModule + 0xB31147,
+                splash: baseModule + 0xA95184,
+                level: baseModule + 0xB8368D,
+                bullet: baseModule + 0xAB62DF,
+                objective: baseModule + 0xB82F68,
+                mc: baseModule + 0xB55BD3
+            },
+            _ => Self { //Original
                 start: baseModule + 0x689FE2,
                 load: baseModule + 0x67FC38,
                 splash: baseModule + 0x653B40,
