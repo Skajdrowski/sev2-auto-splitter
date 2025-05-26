@@ -27,8 +27,6 @@ const pNames: &[&str] = &["SniperEliteV2.exe", "SEV2_Remastered.exe", "SniperEli
 
 #[derive(Gui)]
 struct Settings {
-    #[default = true]
-    Full_game_run: bool,
     #[default = false]
     Individual_level: bool,
     #[default = false]
@@ -144,7 +142,6 @@ fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers) {
 
 async fn main() {
     let mut settings = Settings::register();
-    //let mut map = Map::load();
 
     asr::set_tick_rate(60.0);
     let mut tickToggled = false;
@@ -158,19 +155,13 @@ async fn main() {
 
             loop {
                 settings.update();
-/*
-                if settings.Full_game_run && settings.Individual_level {
-                    map.store(); - Breaks OG LiveSplit
-                }
-*/
+
                 if settings.Slow_PC_mode && !tickToggled {
                     asr::set_tick_rate(30.0);
-                    //map = Map::load();
                     tickToggled = true;
                 }
                 else if !settings.Slow_PC_mode && tickToggled {
                     asr::set_tick_rate(60.0);
-                    //map = Map::load();
                     tickToggled = false;
                 }
 
