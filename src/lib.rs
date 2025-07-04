@@ -36,6 +36,7 @@ struct Settings {
 #[derive(Default)]
 struct Watchers {
     startByte: Watcher<u8>,
+    ilStartByte: Watcher<u8>,
     loadByte: Watcher<u8>,
     splashByte: Watcher<u8>,
     level: Watcher<ArrayCString<2>>,
@@ -46,6 +47,7 @@ struct Watchers {
 
 struct Memory {
     start: Address,
+    ilStart: Address,
     load: Address,
     splash: Address,
     level: Address,
@@ -69,6 +71,7 @@ impl Memory {
         match baseModuleSize {
             18169856 => Self { //Remastered(Win32)
                 start: baseModule + 0x799A77,
+                ilStart: baseModule + 0x767308,
                 load: baseModule + 0x774FE3,
                 splash: baseModule + 0x74C670,
                 level: baseModule + 0x7CFC7D,
@@ -78,6 +81,7 @@ impl Memory {
             },
             21979136 => Self { //Remastered(UWP)
                 start: baseModule + 0xB55BE7,
+                ilStart: baseModule + 0xAAFD08,
                 load: baseModule + 0xB31147,
                 splash: baseModule + 0xA95184,
                 level: baseModule + 0xB8368D,
@@ -87,6 +91,7 @@ impl Memory {
             },
             _ => Self { //Original
                 start: baseModule + 0x689FE2,
+                ilStart: baseModule + 0x649458,
                 load: baseModule + 0x67FC38,
                 splash: baseModule + 0x653B40,
                 level: baseModule + 0x685F31,
@@ -100,7 +105,7 @@ impl Memory {
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
     match settings.Individual_level {
-        true => watchers.splashByte.pair.is_some_and(|val|
+        true => watchers.ilStartByte.pair.is_some_and(|val|
             val.changed_from_to(&0, &1)
             && watchers.level.pair.is_some_and(|val| !val.current.matches("nu"))
         ),
@@ -127,15 +132,20 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
     }
 }
 
-fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers) {
-    watchers.startByte.update_infallible(process.read(memory.start).unwrap_or_default());
+fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers, settings: &Settings) {
+    match settings.Individual_level {
+        true => {
+            watchers.ilStartByte.update_infallible(process.read(memory.ilStart).unwrap_or_default());
+            watchers.mc.update_infallible(process.read(memory.mc).unwrap_or_default())
+        },
+        false => watchers.startByte.update_infallible(process.read(memory.start).unwrap_or_default())
+    };
 
     watchers.loadByte.update_infallible(process.read(memory.load).unwrap_or(1));
     watchers.splashByte.update_infallible(process.read(memory.splash).unwrap_or(1));
 
     watchers.bulletCam.update_infallible(process.read(memory.bullet).unwrap_or_default());
     watchers.objective.update_infallible(process.read(memory.objective).unwrap_or_default());
-    watchers.mc.update_infallible(process.read(memory.mc).unwrap_or_default());
 
     watchers.level.update_infallible(process.read(memory.level).unwrap_or_default());
 }
@@ -181,7 +191,7 @@ async fn main() {
                     timer::start();
                 }
 
-                mainLoop(&process, &memory, &mut watchers);
+                mainLoop(&process, &memory, &mut watchers, &settings);
                 next_tick().await;
             }
         }).await;
