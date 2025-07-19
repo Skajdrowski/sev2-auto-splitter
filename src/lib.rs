@@ -105,11 +105,9 @@ impl Memory {
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
     match settings.Individual_level {
-        true => watchers.ilStartByte.pair.is_some_and(|val|
-            val.changed_from_to(&0, &1)
-            && watchers.level.pair.is_some_and(|val| !val.current.matches("nu"))
-        ),
-        false => watchers.startByte.pair.is_some_and(|val| val.changed_to(&1))
+        true => watchers.ilStartByte.pair.unwrap().changed_from_to(&0, &1)
+        && !watchers.level.pair.unwrap().current.matches("nu"),
+        false => watchers.startByte.pair.unwrap().changed_to(&1)
     }
 }
 
@@ -119,33 +117,35 @@ fn isLoading(watchers: &Watchers, _settings: &Settings) -> Option<bool> {
 
 fn split(watchers: &Watchers, settings: &Settings) -> bool {
     match settings.Individual_level {
-        true => watchers.mc.pair.is_some_and(|val| val.changed_to(&1)),
-        false => watchers.level.pair.is_some_and(|val|
-            val.changed()
-            && !val.current.is_empty()
-            && !val.current.matches("nu")
-            && !val.current.matches("Tu")
-        )
-        || (watchers.level.pair.is_some_and(|val| val.current.matches("Br"))
-        && watchers.bulletCam.pair.is_some_and(|val| val.current == 1)
-        && watchers.objective.pair.is_some_and(|val| val.current == 3))
+        true => watchers.mc.pair.unwrap().changed_to(&1),
+        false => {
+            let level = watchers.level.pair.unwrap();
+
+            level.changed()
+            && !level.current.is_empty()
+            && !level.current.matches("nu")
+            && !level.current.matches("Tu")
+            || level.current.matches("Br")
+            && watchers.bulletCam.pair.unwrap().current == 1
+            && watchers.objective.pair.unwrap().current == 3
+        }
     }
 }
 
 fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers, settings: &Settings) {
     match settings.Individual_level {
         true => {
-            watchers.ilStartByte.update_infallible(process.read(memory.ilStart).unwrap_or_default());
-            watchers.mc.update_infallible(process.read(memory.mc).unwrap_or_default())
+            watchers.ilStartByte.update_infallible(process.read(memory.ilStart).unwrap_or(0));
+            watchers.mc.update_infallible(process.read(memory.mc).unwrap_or(0))
         },
-        false => watchers.startByte.update_infallible(process.read(memory.start).unwrap_or_default())
+        false => watchers.startByte.update_infallible(process.read(memory.start).unwrap_or(0))
     };
 
     watchers.loadByte.update_infallible(process.read(memory.load).unwrap_or(1));
     watchers.splashByte.update_infallible(process.read(memory.splash).unwrap_or(1));
 
-    watchers.bulletCam.update_infallible(process.read(memory.bullet).unwrap_or_default());
-    watchers.objective.update_infallible(process.read(memory.objective).unwrap_or_default());
+    watchers.bulletCam.update_infallible(process.read(memory.bullet).unwrap_or(0));
+    watchers.objective.update_infallible(process.read(memory.objective).unwrap_or(0));
 
     watchers.level.update_infallible(process.read(memory.level).unwrap_or_default());
 }
@@ -175,6 +175,8 @@ async fn main() {
                     tickToggled = false;
                 }
 
+                mainLoop(&process, &memory, &mut watchers, &settings);
+
                 if [TimerState::Running, TimerState::Paused].contains(&timer::state()) {
                     match isLoading(&watchers, &settings) {
                         Some(true) => timer::pause_game_time(),
@@ -191,9 +193,12 @@ async fn main() {
                     timer::start();
                 }
 
-                mainLoop(&process, &memory, &mut watchers, &settings);
                 next_tick().await;
             }
         }).await;
+
+        if timer::state().eq(&TimerState::Running) {
+            timer::pause_game_time();
+        }
     }
 }
