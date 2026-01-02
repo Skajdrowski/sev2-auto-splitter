@@ -40,7 +40,7 @@ struct Watchers {
     loadByte: Watcher<u8>,
     splashByte: Watcher<u8>,
     level: Watcher<ArrayCString<2>>,
-    bulletCam: Watcher<u8>,
+    speedFloat: Watcher<f32>,
     objective: Watcher<u8>,
     mc: Watcher<u8>
 }
@@ -51,7 +51,7 @@ struct Memory {
     load: Address,
     splash: Address,
     level: Address,
-    bullet: Address,
+    speed: Address,
     objective: Address,
     mc: Address
 }
@@ -75,7 +75,7 @@ impl Memory {
                 load: baseModule + 0x774FE3,
                 splash: baseModule + 0x74C670,
                 level: baseModule + 0x7CFC7D,
-                bullet: baseModule + 0x76DD17,
+                speed: baseModule + 0x798074,
                 objective: baseModule + 0x7CF568,
                 mc: baseModule + 0x799A63
             },
@@ -85,7 +85,7 @@ impl Memory {
                 load: baseModule + 0xB31147,
                 splash: baseModule + 0xA95184,
                 level: baseModule + 0xB8368D,
-                bullet: baseModule + 0xAB62DF,
+                speed: baseModule + 0xB5420C,
                 objective: baseModule + 0xB82F68,
                 mc: baseModule + 0xB55BD3
             },
@@ -95,7 +95,7 @@ impl Memory {
                 load: baseModule + 0x67FC38,
                 splash: baseModule + 0x653B40,
                 level: baseModule + 0x685F31,
-                bullet: baseModule + 0x65B917,
+                speed: baseModule + 0x683F0C,
                 objective: baseModule + 0x656F3C,
                 mc: baseModule + 0x689FD2
             }
@@ -126,7 +126,7 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
             && !level.current.matches("nu")
             && !level.current.matches("Tu")
             || level.current.matches("Br")
-            && watchers.bulletCam.pair.unwrap().current == 1
+            && watchers.speedFloat.pair.unwrap().current == 0.25
             && watchers.objective.pair.unwrap().current == 3
         }
     }
@@ -144,7 +144,7 @@ fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers, setting
     watchers.loadByte.update_infallible(process.read(memory.load).unwrap_or(1));
     watchers.splashByte.update_infallible(process.read(memory.splash).unwrap_or(1));
 
-    watchers.bulletCam.update_infallible(process.read(memory.bullet).unwrap_or(0));
+    watchers.speedFloat.update_infallible(process.read(memory.speed).unwrap_or(1.0));
     watchers.objective.update_infallible(process.read(memory.objective).unwrap_or(0));
 
     watchers.level.update_infallible(process.read(memory.level).unwrap_or_default());
