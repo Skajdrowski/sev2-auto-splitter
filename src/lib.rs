@@ -73,7 +73,7 @@ impl Memory {
                 ilStart: baseModule + 0x767308,
                 load: baseModule + 0x774FE3,
                 splash: baseModule + 0x74C670,
-                level: baseModule + 0x7CFC7D,
+                level: baseModule + 0x7C9645,
                 speed: baseModule + 0x798074,
                 mc: baseModule + 0x799A63
             },
@@ -82,7 +82,7 @@ impl Memory {
                 ilStart: baseModule + 0xAAFD08,
                 load: baseModule + 0xB31147,
                 splash: baseModule + 0xA95184,
-                level: baseModule + 0xB8368D,
+                level: baseModule + 0xB7C9B5,
                 speed: baseModule + 0xB5420C,
                 mc: baseModule + 0xB55BD3
             },
