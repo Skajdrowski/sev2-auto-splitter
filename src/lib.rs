@@ -17,7 +17,8 @@ use asr::{
     settings::{Gui},
     string::ArrayCString,
     timer::{self, TimerState},
-    watcher::Watcher
+    watcher::Watcher,
+    signature::Signature
 };
 
 asr::async_main!(stable);
@@ -41,7 +42,6 @@ struct Watchers {
     splashByte: Watcher<u8>,
     level: Watcher<ArrayCString<2>>,
     speedFloat: Watcher<f32>,
-    objective: Watcher<u8>,
     mc: Watcher<u8>
 }
 
@@ -52,7 +52,6 @@ struct Memory {
     splash: Address,
     level: Address,
     speed: Address,
-    objective: Address,
     mc: Address
 }
 
@@ -76,7 +75,6 @@ impl Memory {
                 splash: baseModule + 0x74C670,
                 level: baseModule + 0x7CFC7D,
                 speed: baseModule + 0x798074,
-                objective: baseModule + 0x7CF568,
                 mc: baseModule + 0x799A63
             },
             21979136 => Self { //Remastered(UWP)
@@ -86,18 +84,32 @@ impl Memory {
                 splash: baseModule + 0xA95184,
                 level: baseModule + 0xB8368D,
                 speed: baseModule + 0xB5420C,
-                objective: baseModule + 0xB82F68,
                 mc: baseModule + 0xB55BD3
             },
-            _ => Self { //Original
-                start: baseModule + 0x689FE2,
-                ilStart: baseModule + 0x649458,
-                load: baseModule + 0x67FC38,
-                splash: baseModule + 0x653B40,
-                level: baseModule + 0x685F31,
-                speed: baseModule + 0x683F0C,
-                objective: baseModule + 0x656F3C,
-                mc: baseModule + 0x689FD2
+            _ => { //Original
+                const startAndMcSIG: Signature<12> = Signature::new("8A ?? ?? ?? ?? ?? 24 ?? 5F 5E 5D C3");
+                const ilStartSIG: Signature<13> = Signature::new("A2 ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 ?? 79");
+                const loadSIG: Signature<38> = Signature::new("3B ?? ?? ?? ?? ?? 73 ?? 8B ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 8B ?? ?? ?? ?? ?? 89 ?? ?? 8B ?? 51");
+                const splashSIG: Signature<14> = Signature::new("A1 ?? ?? ?? ?? 39 ?? ?? ?? ?? ?? 74 ?? 50");
+                const levelSIG: Signature<26> = Signature::new("68 ?? ?? ?? ?? 6A ?? 8B ?? 6A ?? 8D ?? ?? 68 ?? ?? ?? ?? 50 E8 ?? ?? ?? ?? 8B");
+                const speedSIG: Signature<32> = Signature::new("F3 ?? ?? ?? ?? ?? ?? ?? F3 ?? ?? ?? ?? D9 ?? ?? 51 8D ?? ?? ?? ?? ?? D9 ?? ?? E8 ?? ?? ?? ?? D8");
+
+                let startScan = startAndMcSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 2;
+                let ilStartScan = ilStartSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 1;
+                let loadScan = loadSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 2;
+                let splashScan = splashSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 1;
+                let levelScan = levelSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 1;
+                let speedScan = speedSIG.scan_process_range(process, (baseModule, baseModuleSize.into())).unwrap() + 4;
+
+                Self {
+                    start: (process.read::<u32>(startScan).unwrap() + 0x22).into(),
+                    ilStart: process.read::<u32>(ilStartScan).unwrap().into(),
+                    load: process.read::<u32>(loadScan).unwrap().into(),
+                    splash: process.read::<u32>(splashScan).unwrap().into(),
+                    level: (process.read::<u32>(levelScan).unwrap() + 0x5).into(),
+                    speed: process.read::<u32>(speedScan).unwrap().into(),
+                    mc: (process.read::<u32>(startScan).unwrap() + 0x12).into()
+                }
             }
         }
     }
@@ -105,8 +117,7 @@ impl Memory {
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
     match settings.Individual_level {
-        true => watchers.ilStartByte.pair.unwrap().changed_from_to(&0, &1)
-        && !watchers.level.pair.unwrap().current.matches("nu"),
+        true => watchers.ilStartByte.pair.unwrap().changed_from_to(&0, &1),
         false => watchers.startByte.pair.unwrap().changed_to(&1)
     }
 }
@@ -123,11 +134,8 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
 
             level.changed()
             && !level.current.is_empty()
-            && !level.current.matches("nu")
-            && !level.current.matches("Tu")
             || level.current.matches("Br")
             && watchers.speedFloat.pair.unwrap().current == 0.25
-            && watchers.objective.pair.unwrap().current == 3
         }
     }
 }
@@ -145,7 +153,6 @@ fn mainLoop(process: &Process, memory: &Memory, watchers: &mut Watchers, setting
     watchers.splashByte.update_infallible(process.read(memory.splash).unwrap_or(1));
 
     watchers.speedFloat.update_infallible(process.read(memory.speed).unwrap_or(1.0));
-    watchers.objective.update_infallible(process.read(memory.objective).unwrap_or(0));
 
     watchers.level.update_infallible(process.read(memory.level).unwrap_or_default());
 }
