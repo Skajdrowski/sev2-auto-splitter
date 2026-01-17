@@ -117,7 +117,7 @@ impl Memory {
 
 fn start(watchers: &Watchers, settings: &Settings) -> bool {
     match settings.Individual_level {
-        true => watchers.ilStartByte.pair.unwrap().changed_from_to(&0, &1),
+        true => watchers.ilStartByte.pair.unwrap().changed_from_to(&0, &1) && watchers.speedFloat.pair.unwrap().current == 1.0,
         false => watchers.startByte.pair.unwrap().changed_to(&1)
     }
 }
