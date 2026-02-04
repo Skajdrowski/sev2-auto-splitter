@@ -134,6 +134,7 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
 
             level.changed()
             && !level.current.is_empty()
+            && !level.current.matches("Tu")
             || level.current.matches("Br")
             && watchers.speedFloat.pair.unwrap().current == 0.25
         }
